@@ -5,100 +5,91 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>LLM_local — a GPT trained from scratch</title>
 <style>
-  :root { --bg:#0d1117; --panel:#161b22; --border:#30363d; --fg:#e6edf3; --muted:#8b949e;
-          --accent:#58a6ff; --accent2:#3fb950; --warn:#d29922; }
-  * { box-sizing: border-box; }
-  body { margin:0; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-         background: var(--bg); color: var(--fg); line-height:1.5; }
-  header { padding:24px 20px 8px; text-align:center; }
-  h1 { margin:0; font-size:22px; letter-spacing:.5px; }
-  h1 .tag { color: var(--accent); }
-  .sub { color: var(--muted); font-size:13px; margin-top:6px; }
-  .wrap { max-width:820px; margin:0 auto; padding:16px 20px 60px; }
-  .panel { background: var(--panel); border:1px solid var(--border); border-radius:10px;
-           padding:16px; margin-bottom:16px; }
-  label { display:block; font-size:12px; color: var(--muted); margin:10px 0 4px; text-transform:uppercase; letter-spacing:.5px; }
-  textarea, input[type=text] { width:100%; background:#0d1117; color:var(--fg);
-           border:1px solid var(--border); border-radius:8px; padding:10px; font-family:inherit; font-size:14px; }
-  textarea { min-height:84px; resize:vertical; }
-  .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
-  .row > div { flex:1; min-width:140px; }
-  input[type=range] { width:100%; accent-color: var(--accent); }
-  .val { color: var(--accent); font-size:12px; }
-  button { background: var(--accent); color:#0d1117; border:none; border-radius:8px;
-           padding:10px 18px; font-weight:600; font-family:inherit; cursor:pointer; font-size:14px; }
-  button:disabled { opacity:.5; cursor:not-allowed; }
-  button.ghost { background:transparent; color:var(--fg); border:1px solid var(--border); }
-  #out { white-space:pre-wrap; min-height:120px; font-size:14px; }
-  .meta { font-size:12px; color:var(--muted); margin-top:10px; }
-  .status { font-size:12px; padding:6px 10px; border-radius:6px; display:inline-block; }
-  .status.load { background:rgba(210,153,34,.15); color:var(--warn); }
-  .status.ok { background:rgba(63,185,80,.15); color:var(--accent2); }
-  .status.err { background:rgba(248,81,73,.15); color:#f85149; }
-  footer { text-align:center; color:var(--muted); font-size:12px; padding:20px; }
-  a { color: var(--accent); }
-  .pill { font-size:11px; border:1px solid var(--border); border-radius:999px; padding:2px 8px; color:var(--muted); }
-  code { background:#0d1117; border:1px solid var(--border); border-radius:4px; padding:1px 5px; font-size:12px; }
+  :root{
+    --bg:#0b0e14; --panel:#121722; --panel2:#0f141d; --border:#1f2937;
+    --text:#cdd6e4; --muted:#7b879c; --accent:#5eead4; --accent2:#7c8cff;
+    --err:#ff6b6b; --ok:#5eead4;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font:14px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  .wrap{max-width:840px;margin:0 auto;padding:28px 18px 60px}
+  h1{font-size:20px;font-weight:600;margin:0 0 4px;letter-spacing:.3px}
+  h1 .tag{color:var(--accent)}
+  .sub{color:var(--muted);margin:0 0 18px;font-size:12.5px}
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:12px;
+    padding:16px;margin-bottom:18px}
+  .status{font-size:12.5px;padding:6px 10px;border-radius:8px;display:inline-block;margin-bottom:12px}
+  .status.load{background:#1a2330;color:var(--muted)}
+  .status.ok{background:#0e2a23;color:var(--ok)}
+  .status.err{background:#2a1414;color:var(--err)}
+  .meta{color:var(--muted);font-size:12px;margin-top:10px}
+  label{display:block;color:var(--muted);font-size:11.5px;text-transform:uppercase;letter-spacing:.5px;margin:12px 0 5px}
+  textarea,input[type=text]{width:100%;background:var(--panel2);color:var(--text);
+    border:1px solid var(--border);border-radius:8px;padding:10px;font:inherit;resize:vertical}
+  textarea#out{min-height:170px;white-space:pre-wrap}
+  .row{display:flex;gap:14px;flex-wrap:wrap}
+  .row > div{flex:1;min-width:150px}
+  input[type=range]{width:100%;accent-color:var(--accent)}
+  .val{color:var(--text);font-size:12px}
+  .btns{display:flex;gap:10px;margin-top:14px}
+  button{cursor:pointer;background:var(--accent2);color:#0b0e14;border:0;border-radius:8px;
+    padding:9px 16px;font:600 13px/1 ui-monospace,monospace}
+  button:disabled{opacity:.4;cursor:not-allowed}
+  button#stop{background:#3a2230;color:#ffb4b4}
+  button#clear{background:transparent;color:var(--muted);border:1px solid var(--border)}
+  .timing{color:var(--muted);font-size:12px;margin-top:8px}
+  .sect{color:var(--accent2);font-size:12px;text-transform:uppercase;letter-spacing:.6px;margin:22px 0 6px}
 </style>
 </head>
 <body>
-<header>
-  <h1><span class="tag">LLM_local</span> — a GPT trained from scratch</h1>
-  <div class="sub">Byte-level BPE tokenizer + decoder-only Transformer, pre-trained &amp; SFT-aligned, running <b>100% in your browser</b> (no server).</div>
-</header>
 <div class="wrap">
-  <div class="panel">
-    <span id="status" class="status load">loading model…</span>
-    <div class="meta" id="modelMeta"></div>
-  </div>
+  <h1>LLM_local <span class="tag">— a GPT trained from scratch</span></h1>
+  <p class="sub">Byte-level BPE tokenizer + Transformer, implemented from scratch in PyTorch, then ported to run entirely in your browser (no server, no API).</p>
 
   <div class="panel">
+    <div id="status" class="status load">initializing…</div>
+    <div id="modelMeta" class="meta"></div>
+
     <label for="prompt">Prompt</label>
-    <textarea id="prompt" placeholder="It is a truth universally acknowledged">It is a truth universally acknowledged</textarea>
+    <textarea id="prompt" rows="2">It is a truth universally acknowledged</textarea>
 
     <div class="row">
       <div>
-        <label>Max new tokens <span class="val" id="vTokens">120</span></label>
-        <input type="range" id="tokens" min="8" max="400" value="120" oninput="vTokens.textContent=this.value" />
+        <label for="tokens">Max new tokens · <span id="tokensV" class="val">120</span></label>
+        <input type="range" id="tokens" min="8" max="400" value="120" oninput="tokensV.textContent=this.value" />
       </div>
       <div>
-        <label>Temperature <span class="val" id="vTemp">0.8</span></label>
-        <input type="range" id="temp" min="0.1" max="1.5" step="0.05" value="0.8" oninput="vTemp.textContent=this.value" />
+        <label for="temp">Temperature · <span id="tempV" class="val">0.8</span></label>
+        <input type="range" id="temp" min="0" max="1.5" step="0.05" value="0.8" oninput="tempV.textContent=this.value" />
       </div>
       <div>
-        <label>Top-k <span class="val" id="vK">40</span></label>
-        <input type="range" id="topk" min="0" max="80" value="40" oninput="vK.textContent=this.value" />
+        <label for="topk">Top-k · <span id="topkV" class="val">40</span></label>
+        <input type="range" id="topk" min="0" max="100" value="40" oninput="topkV.textContent=this.value" />
       </div>
       <div>
-        <label>Top-p <span class="val" id="vP">0.9</span></label>
-        <input type="range" id="topp" min="0" max="1" step="0.05" value="0.9" oninput="vP.textContent=this.value" />
+        <label for="topp">Top-p · <span id="toppV" class="val">0.9</span></label>
+        <input type="range" id="topp" min="0" max="1" step="0.05" value="0.9" oninput="toppV.textContent=this.value" />
       </div>
     </div>
 
-    <div class="row" style="margin-top:14px">
+    <div class="btns">
       <button id="gen">Generate</button>
-      <button id="stop" class="ghost" disabled>Stop</button>
-      <button id="clear" class="ghost">Clear</button>
+      <button id="stop" disabled>Stop</button>
+      <button id="clear">Clear</button>
     </div>
+    <div id="timing" class="timing"></div>
+
+    <label for="out" style="margin-top:16px">Output</label>
+    <textarea id="out" rows="9" readonly placeholder="generated text appears here…"></textarea>
   </div>
 
   <div class="panel">
-    <label>Output</label>
-    <div id="out"></div>
-    <div class="meta" id="timing"></div>
-  </div>
-
-  <div class="panel">
-    <label>Chat (assistant mode)</label>
-    <div id="chat" class="meta" style="white-space:pre-wrap; min-height:40px"></div>
+    <div class="sect">Chat mode</div>
+    <div id="chat" class="meta" style="white-space:pre-wrap;min-height:48px"></div>
     <input type="text" id="chatIn" placeholder="Ask LLM_local something…" style="margin-top:8px" />
   </div>
 </div>
-
-<footer>
-  Built from scratch in PyTorch (CPU) · tokenized + exported to run in JS · <span class="pill">no backend</span>
-</footer>
-
-<script type="module" src="app.js"></script>
+<script type="module" src="./app.js"></script>
 </body>
 </html>
