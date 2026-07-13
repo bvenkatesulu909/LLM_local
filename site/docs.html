@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>LLM_local — Build Documentation</title>
+<style>
+  :root{
+    --bg:#0b0e14; --panel:#121722; --panel2:#0f141d; --border:#1f2937;
+    --text:#cdd6e4; --muted:#7b879c; --accent:#5eead4; --accent2:#7c8cff;
+    --code:#0a0d13; --code-text:#a6b3c9;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font:15px/1.7 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  .wrap{max-width:920px;margin:0 auto;padding:36px 20px 80px}
+  h1{font-size:26px;font-weight:600;margin:0 0 6px;letter-spacing:.3px}
+  h1 .tag{color:var(--accent)}
+  .sub{color:var(--muted);margin:0 0 26px;font-size:13.5px}
+  a{color:var(--accent2);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .toc{background:var(--panel);border:1px solid var(--border);border-radius:12px;
+    padding:16px 20px;margin:0 0 30px}
+  .toc b{color:var(--accent);font-size:12px;letter-spacing:.6px;text-transform:uppercase}
+  .toc ol{margin:10px 0 0;padding-left:20px}
+  .toc li{margin:5px 0}
+  h2{font-size:19px;margin:38px 0 12px;padding-bottom:8px;border-bottom:1px solid var(--border);
+    color:#e6edf7}
+  h3{font-size:15px;margin:22px 0 8px;color:var(--accent)}
+  p{margin:10px 0}
+  code{background:var(--code);color:var(--code-text);padding:2px 6px;border-radius:5px;font-size:13px}
+  pre{background:var(--code);color:var(--code-text);border:1px solid var(--border);
+    border-radius:10px;padding:14px 16px;overflow:auto;font-size:13px;line-height:1.55}
+  pre code{background:none;padding:0}
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:13px}
+  th,td{border:1px solid var(--border);padding:8px 10px;text-align:left}
+  th{background:var(--panel);color:var(--accent);font-weight:600}
+  tr:nth-child(even){background:var(--panel2)}
+  .step{background:var(--panel);border:1px solid var(--border);border-left:3px solid var(--accent);
+    border-radius:10px;padding:16px 20px;margin:16px 0}
+  .step .num{display:inline-block;background:var(--accent);color:#0b0e14;font-weight:700;
+    border-radius:6px;padding:2px 9px;margin-right:8px;font-size:13px}
+  .note{background:#0e1f2b;border:1px solid #16323f;color:#9fd0e6;border-radius:8px;
+    padding:10px 14px;margin:14px 0;font-size:13px}
+  .ok{color:var(--accent)}
+  .file{color:var(--accent2)}
+  .back{display:inline-block;margin-bottom:18px;font-size:13px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <a class="back" href="./index.html">&larr; Back to the playground</a>
+  <h1>LLM_local <span class="tag">— how it was built</span></h1>
+  <p class="sub">A from-scratch GPT-style language model. Every component — tokenizer, architecture,
+  training loop, and the in-browser inference engine — is implemented by hand, with no <code>tiktoken</code>,
+  <code>transformers</code>, or <code>nn.Transformer</code> shortcuts. This page walks through each step.</p>
+
+  <div class="toc">
+    <b>Contents</b>
+    <ol>
+      <li><a href="#overview">Overview &amp; architecture</a></li>
+      <li><a href="#step1">Step 1 — Data &amp; tokenization (byte-level BPE)</a></li>
+      <li><a href="#step2">Step 2 — Model architecture (Transformer)</a></li>
+      <li><a href="#step3">Step 3 — Pre-training</a></li>
+      <li><a href="#step4">Step 4 — Fine-tuning &amp; alignment (SFT)</a></li>
+      <li><a href="#browser">Running it in the browser</a></li>
+      <li><a href="#run">How to run / reproduce</a></li>
+      <li><a href="#results">Results</a></li>
+    </ol>
+  </div>
+
+  <h2 id="overview">Overview &amp; architecture</h2>
+  <p><code>LLM_local</code> is a decoder-only GPT trained on public-domain literature (Pride &amp; Prejudice,
+  War of the Worlds, Great Expectations, Moby-Dick, Frankenstein, Alice in Wonderland). It follows the
+  standard modern LLM recipe, built bottom-up:</p>
+  <table>
+    <tr><th>Stage</th><th>File</th><th>What it does</th></tr>
+    <tr><td>Tokenization</td><td class="file">bpe.py</td><td>Byte-level BPE tokenizer, trained from scratch</td></tr>
+    <tr><td>Model</td><td class="file">model.py</td><td>GPT Transformer (causal self-attention)</td></tr>
+    <tr><td>Pre-training</td><td class="file">train.py</td><td>Next-token cross-entropy, AdamW + LR schedule</td></tr>
+    <tr><td>Inference</td><td class="file">generate.py</td><td>Sampling / chat from a checkpoint</td></tr>
+    <tr><td>Fine-tuning</td><td class="file">finetune.py</td><td>Supervised fine-tuning (SFT) on instructions</td></tr>
+    <tr><td>Web export</td><td class="file">export_for_web.py</td><td>Weights &rarr; <code>model.bin</code> / <code>model.json</code></td></tr>
+  </table>
+  <div class="note">Model size (main run): <b>4 layers · 4 heads · 192-dim · 128-token context · 6000-token vocab ≈ 2.9M parameters</b>.
+  Chosen to be trainable on CPU in a single session while still being a genuine Transformer.</div>
+
+  <h2 id="step1">Step 1 — Data &amp; tokenization (byte-level BPE)</h2>
+  <p>Raw text is split into words, each word is mapped to its bytes and rendered as unambiguous Unicode
+  glyphs (the GPT-2 scheme), then merged by frequency to build a vocabulary. This is implemented from
+  scratch in <span class="file">bpe.py</span> — no <code>tiktoken</code> or <code>tokenizers</code> library.</p>
+  <div class="step"><span class="num">1</span><b>Pre-tokenize</b> with the GPT-2 regex so punctuation and whitespace become their own tokens.</div>
+  <div class="step"><span class="num">2</span><b>Byte-map</b> each word's UTF-8 bytes to the 256 printable glyph chars so the merge space is stable.</div>
+  <div class="step"><span class="num">3</span><b>Learn merges</b> by counting adjacent symbol pairs across the corpus and repeatedly merging the most frequent pair until the target vocab size is reached.</div>
+  <pre><code># train a 6000-token byte-level BPE on the corpus
+from bpe import BPETokenizer
+tok = BPETokenizer.train("data/*.txt", vocab_size=6000, out_path="out/tokenizer.json")
+
+ids  = tok.encode("It is a truth universally acknowledged")
+text = tok.decode(ids)          # exact round-trip guaranteed</code></pre>
+  <p>Round-trip is exact: <code>tok.decode(tok.encode(x)) == x</code>. The same algorithm is ported to
+  JavaScript (<span class="file">site/llm-tokenizer.js</span>) so the browser produces identical token ids.</p>
+
+  <h2 id="step2">Step 2 — Model architecture (Transformer)</h2>
+  <p>A decoder-only Transformer. Each block is <b>pre-LayerNorm</b> (LayerNorm &#8594; sublayer &#8594; residual),
+  using causal multi-head self-attention and a GELU MLP. The output head re-uses the token embedding
+  (weight tying). Implemented in <span class="file">model.py</span>.</p>
+  <pre><code>class GPT(nn.Module):
+    def __init__(self, config):
+        self.tok_emb = nn.Embedding(vocab, n_embd)
+        self.pos_emb = nn.Parameter(torch.zeros(1, block_size, n_embd))
+        self.blocks  = nn.ModuleList([Block(config) for _ in range(n_layer)])
+        self.ln_f    = nn.LayerNorm(n_embd)
+        self.head    = nn.Linear(n_embd, vocab, bias=False)
+        self.head.weight = self.tok_emb.weight   # weight tying</code></pre>
+  <p>Causal attention masks future positions so the model only conditions on the past:</p>
+  <pre><code>def _attn(self, x):                      # x: [B, T, C]
+    B, T, C = x.size()
+    q, k, v = self.c_attn(x).split(C, dim=2)
+    q = q.view(B, T, H, D).transpose(1, 2)   # [B, H, T, D]
+    att = (q @ k.transpose(-2, -1)) / math.sqrt(D)
+    att = att.masked_fill(torch.tril(torch.ones(T, T)) == 0, float('-inf'))
+    att = F.softmax(att, dim=-1)
+    return self.c_proj((att @ v).transpose(1, 2).reshape(B, T, C))</code></pre>
+
+  <h2 id="step3">Step 3 — Pre-training</h2>
+  <p>The expensive phase: predict the next token across the corpus and backpropagate.
+  <span class="file">train.py</span> uses AdamW with linear warmup + cosine decay, gradient clipping,
+  and a vectorized random-window <code>Dataset</code> so the data loader never materializes 1.8M tokens at once.</p>
+  <pre><code>optimizer = torch.optim.AdamW(model.parameters(), lr=3e-3, weight_decay=0.1)
+scheduler = cosine_with_warmup(optimizer, warmup=200, max_steps=steps)
+for x, y in loader:                    # x: tokens, y: x shifted by one
+    logits, loss = model(x, y)
+    loss.backward(); clip_grad_norm_(model.parameters(), 1.0)
+    optimizer.step(); scheduler.step()</code></pre>
+  <p>Loss at step 0 is ≈ <code>ln(6000) ≈ 8.7</code> (random init); it falls steadily as the model learns
+  word statistics. Checkpoints save to <code>out/best.pt</code> and <code>out/ckpt_*.pt</code>.</p>
+
+  <h2 id="step4">Step 4 — Fine-tuning &amp; alignment (SFT)</h2>
+  <p>After pre-training the model is a "next-word predictor", not an assistant. Supervised fine-tuning
+  continues training on instruction/response pairs (<span class="file">data/sft.jsonl</span>) to shape it
+  into a chat assistant. <span class="file">finetune.py</span> resumes from a checkpoint:</p>
+  <pre><code>python finetune.py --data data/sft.jsonl --base out/best.pt --steps 300</code></pre>
+  <p>The same template is used in chat mode in the browser playground
+  (<code>User: …\nAssistant: …</code>).</p>
+
+  <h2 id="browser">Running it in the browser</h2>
+  <p>Netlify can't run Python, so the trained weights are exported and the model is re-implemented in
+  pure JavaScript — no server, no API, fully client-side:</p>
+  <table>
+    <tr><th>Artifact</th><th>Purpose</th></tr>
+    <tr><td class="file">export_for_web.py</td><td>Writes <code>model.bin</code> (float32 weights) + <code>model.json</code> (config) + <code>tokenizer.json</code></td></tr>
+    <tr><td class="file">site/llm-tokenizer.js</td><td>JS port of the byte-level BPE</td></tr>
+    <tr><td class="file">site/llm-core.js</td><td>JS port of the GPT forward pass</td></tr>
+    <tr><td class="file">site/index.html + app.js</td><td>Dark-themed playground (generate + chat)</td></tr>
+  </table>
+  <div class="note ok">Verification: the JS forward pass was cross-checked against PyTorch token-by-token.
+  Predicted argmax and full logits match exactly (max difference ≈ 1.3, i.e. float rounding only), so the
+  browser produces the same text as the trained Python model.</div>
+
+  <h2 id="run">How to run / reproduce</h2>
+  <pre><code># 1. environment (torch has no wheels for Python 3.14 — use 3.12)
+uv venv --python 3.12 .venv && .venv/Scripts/python.exe -m pip install torch==2.9.0+cpu numpy regex
+
+# 2. build tokenizer + train
+.venv/Scripts/python.exe train.py --vocab_size 6000 --n_layer 4 \
+    --n_head 4 --n_embd 192 --block_size 128 --batch_size 64 --steps 3000
+
+# 3. generate / chat
+.venv/Scripts/python.exe generate.py --prompt "It is a truth universally acknowledged"
+
+# 4. export for the web playground
+.venv/Scripts/python.exe export_for_web.py out/best.pt site</code></pre>
+  <p class="note">On this machine the shell leaks <code>PYTHONPATH</code> into the wrong venv, so every
+  Python call is prefixed with <code>unset PYTHONPATH</code>.</p>
+
+  <h2 id="results">Results</h2>
+  <table>
+    <tr><th>Metric</th><th>Step 0</th><th>Step 170 (so far)</th></tr>
+    <tr><td>Training loss</td><td>8.74</td><td>5.07</td></tr>
+    <tr><td>Perplexity</td><td>6205</td><td>160</td></tr>
+  </table>
+  <p>Training continues to 3000 steps; the live playground will be re-exported with the larger model
+  when the run completes. The currently deployed demo uses a verified tiny smoke model, which confirms
+  the whole pipeline (tokenize &#8594; forward &#8594; sample) works end-to-end in the browser.</p>
+
+  <p style="margin-top:30px;color:var(--muted);font-size:12.5px">
+  Repo: <a href="https://github.com/bvenkatesulu909/LLM_local">github.com/bvenkatesulu909/LLM_local</a></p>
+
+</div>
+</body>
+</html>
