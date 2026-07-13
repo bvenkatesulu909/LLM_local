@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+out_smoke/
+out/
+*.log
+.DS_Store
+# model.bin / model.json ARE committed so the deployed site is self-contained
